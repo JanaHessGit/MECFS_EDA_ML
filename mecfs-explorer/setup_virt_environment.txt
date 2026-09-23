@@ -1,5 +1,5 @@
 Set up environment:
-cd .../MECFS_python_ML/mecfs-explorer
+cd .../MECFS_EDA_ML/mecfs-explorer
 python3 -m venv .venv_MECFS
 source venv_MECFS/bin/activate
 python -m pip install --upgrade pip

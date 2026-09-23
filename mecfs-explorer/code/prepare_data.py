@@ -4,9 +4,12 @@ Writes:
 - data/processed/GSE293840/GSE293840_counts_transposed.csv
 - data/processed/GSE293840/GSE293840_counts_with_meta.csv
 """
+
 from pathlib import Path
 import pandas as pd
 import logging
+
+
 
 
 logging.basicConfig(level=logging.INFO)
@@ -93,7 +96,6 @@ def prepare(counts_path: Path, metadata_path: Path, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
     counts = read_counts(counts_path)
     # transpose so rows are samples and columns are genes
-    # %%
     counts_t = counts.T
     logging.info("Transposed counts shape: %s", counts_t.shape)
 
