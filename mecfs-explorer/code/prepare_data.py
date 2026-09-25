@@ -75,8 +75,8 @@ def prepare(counts_path: Path, metadata_path: Path, out_dir: Path, save: bool, g
 
 if __name__ == "__main__":
     geo_id = "GSE293840"
-    base = Path(str("../data/raw/") + geo_id)
+    base = Path(str("./data/raw/") + geo_id)
     counts_path = base / str(geo_id + "_raw_counts_all.csv")
     metadata_path = base / str(geo_id + "_family.soft.gz")
-    out_dir = Path(str("../data/processed/") + geo_id)
+    out_dir = Path(str("./data/processed/") + geo_id)
     prepare(counts_path, metadata_path, out_dir, save=True, geo_id=geo_id)
