@@ -18,6 +18,8 @@ print(df.head())
 missing = df.isna().sum()
 print(missing[missing > 0])
 
+
+
 # Make sure no phenotypes are missing
 df["phenotype"].unique()
 n_mecfs = df.loc[df["phenotype"] == "case", "patient_id"].nunique()
@@ -101,13 +103,17 @@ plt.tight_layout()
 plt.show()
 # A lot more females than males in both groups, but especially in the case group. 
 
-#TODO
-
-#
-
+#explore counts
+# Count zero entries for each column
+zero_counts = (df == 0).sum()
+print("Zero counts per column:")
+print(zero_counts)
 
 
 #TODO ausführbar machen
+#TODO vllt metadata von github verwenden??? da ist mehr enthalten... and also counts??? https://media.githubusercontent.com/media/aegardella/cfRNA_MECFS/refs/heads/main/Scripts/Manuscript_files/counts_vst_output.csv
 #GH and MFI-20 scores?
 #disease duration info???
 #differential abundance analysis
+
+
