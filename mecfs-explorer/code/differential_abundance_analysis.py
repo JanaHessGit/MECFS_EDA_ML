@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 
 
 base = Path("../data/raw/GSE293840")
-SAVE = False
+SAVE = True
 OUTPUT_PATH = Path("../data/processed/GSE293840")
 
 # Load prepared data: counts and metadata merged 
@@ -151,6 +151,6 @@ filtered_results.index
 
 #TODO plotCounts
 #TODO volcano plot
-#TODO google common mistakes
+#TODO google common mistakes in deseq2 analysis and check
 #TODO perform the analysis and compare with the papers github & results https://github.com/aegardella/cfRNA_MECFS/blob/main/Scripts/Manuscript_files/deseq2_res.csv
 #TODO add additional metadta from their github??
