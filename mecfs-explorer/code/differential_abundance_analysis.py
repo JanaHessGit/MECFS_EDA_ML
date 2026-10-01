@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 
 
 base = Path("../data/raw/GSE293840")
-SAVE = False
+SAVE = True
 OUTPUT_PATH = Path("../data/processed/GSE293840")
 
 # Load prepared data: counts and metadata merged 
@@ -20,19 +20,26 @@ df = prepare(counts_path=base / "GSE293840_raw_counts_all.csv", metadata_path=ba
 df.index = df["patient_id"]
 
 df_metadata = df.iloc[:, :41]
+#set order of phenotype categories to control first, case second, so that the log2 fold change is calculated as case vs control
 df_metadata["phenotype"] = pd.Categorical(df_metadata["phenotype"], categories=["control", "case"])
 df_counts = df.iloc[:, 41:]
 
-
+df_counts_all = df_counts.copy()
 #filter out lowly expressed genes
 min_counts = 10
 min_occurrence = 3
-genes_with_min_x_counts = ((df_counts >= min_counts).sum(axis=0) >= min_occurrence)
-genes_with_min_x_counts = genes_with_min_x_counts[genes_with_min_x_counts]
-df_counts = df_counts.loc[:, genes_with_min_x_counts.index]
+#at least 10 counts in at least 3 samples
+#genes_with_min_x_counts = ((df_counts >= min_counts).sum(axis=0) >= min_occurrence)
+#at least 10 counts
+check_min_x_count = df_counts.sum(axis=0) >= min_counts
+genes_keep = check_min_x_count[check_min_x_count]
+genes_remove = check_min_x_count[~check_min_x_count]
+df_counts = df_counts.loc[:, genes_keep.index]
+df_counts_removed = df_counts_all.loc[:, genes_remove.index]
+print("Number of genes removed due to low counts:", df_counts_removed.shape[1])
 
 #set up a deseq2 dataset
-inference = DefaultInference(n_cpus=8) #TODO ????
+inference = DefaultInference(n_cpus=8)
 dds = DeseqDataSet(
     counts=df_counts,
     metadata=df_metadata,
@@ -136,6 +143,11 @@ if SAVE:
 #filter diff abundance results based on log2fc and padj
 padj_cutoff = 0.05
 shrunk_lfc_cutoff = 1
+
+print("Number of genes with padj missing:", ds.results_df["padj"].isna().sum()," out of", ds.results_df.shape[0])
+print("Number of genes with log2FoldChange missing:", ds.results_df["log2FoldChange"].isna().sum()," out of", ds.results_df.shape[0])
+
+#tmp=ds.results_df
 filtered_results_padj = ds.results_df[ds.results_df["padj"].notna() & (ds.results_df["padj"] < padj_cutoff)]
 filtered_results_lfc = ds.results_df[ds.results_df["padj"].notna() & (ds.results_df["log2FoldChange"].abs() >= shrunk_lfc_cutoff)]
 filtered_results = ds.results_df[
@@ -146,7 +158,7 @@ filtered_results = ds.results_df[
 
 filtered_results.index
 if SAVE:
-    filtered_results.to_csv(OUTPUT_PATH / "deseq2_de_results_0.01padj_1log2fcs.csv")
+    filtered_results.to_csv(OUTPUT_PATH / f"deseq2_de_results_{padj_cutoff}_{shrunk_lfc_cutoff}.csv")
 
 
 
@@ -189,7 +201,6 @@ for g in de_genes:
         jitter=0.2,
         size=7,
     )
-    #plt.yscale("log1p")
     plt.xlabel("Phenotype")
     plt.ylabel(f"Normalized counts")
     plt.title(f"{g}")
@@ -221,15 +232,21 @@ sns.scatterplot(
 
 plt.axvline(1, color="black", linestyle="--", linewidth=1)
 plt.axvline(-1, color="black", linestyle="--", linewidth=1)
-plt.axhline(-np.log10(0.05), color="black", linestyle="--", linewidth=1)
+plt.axhline(-np.log10(padj_cutoff), color="black", linestyle="--", linewidth=1)
 
 plt.xlabel("Log2 fold change")
-plt.ylabel("-Log10(p-value)")
+plt.ylabel(f"-Log10(adjusted p-value)")
 plt.title("DESeq2 volcano plot")
-plt.legend(title="", labels=["pval < 0.05 and log2FC >= 1", "Rest"])
+plt.legend(title="", labels=[f"pval < {padj_cutoff} and log2FC >= {shrunk_lfc_cutoff}", "Rest"])
 plt.tight_layout()
 plt.show()
 
+
+#TODO investigate genes with padj NA
+#TODO read rest of TU website
 #TODO google common mistakes in deseq2 analysis and check
 #TODO perform the analysis and compare with the papers github & results https://github.com/aegardella/cfRNA_MECFS/blob/main/Scripts/Manuscript_files/deseq2_res.csv
 #TODO add additional metadta from their github??
+#TODO make markdown out of it
+#TODO functionen draus machen, die ich testen kann?
+#TODO heatmap
