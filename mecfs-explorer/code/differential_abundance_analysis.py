@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 
 
 base = Path("../data/raw/GSE293840")
-SAVE = True
+SAVE = False
 OUTPUT_PATH = Path("../data/processed/GSE293840")
 
 # Load prepared data: counts and metadata merged 
@@ -137,20 +137,99 @@ if SAVE:
 padj_cutoff = 0.05
 shrunk_lfc_cutoff = 1
 filtered_results_padj = ds.results_df[ds.results_df["padj"].notna() & (ds.results_df["padj"] < padj_cutoff)]
-filtered_results_lfc = ds.results_df[ds.results_df["padj"].notna() & (ds.results_df["log2FoldChange"].abs() > shrunk_lfc_cutoff)]
+filtered_results_lfc = ds.results_df[ds.results_df["padj"].notna() & (ds.results_df["log2FoldChange"].abs() >= shrunk_lfc_cutoff)]
 filtered_results = ds.results_df[
     ds.results_df["padj"].notna() & 
     (ds.results_df["padj"] < padj_cutoff) & 
-    (ds.results_df["log2FoldChange"].abs() > shrunk_lfc_cutoff)
+    (ds.results_df["log2FoldChange"].abs() >= shrunk_lfc_cutoff)
     ]
 
 filtered_results.index
+if SAVE:
+    filtered_results.to_csv(OUTPUT_PATH / "deseq2_de_results_0.01padj_1log2fcs.csv")
 
 
 
+####Visualize results###
 
-#TODO plotCounts
-#TODO volcano plot
+# Scatterplot of normalized expression for one gene by phenotype
+de_genes = list(filtered_results.index)
+
+normalized_counts = dds.to_df(layer="normed_counts")
+for g in de_genes:
+    if g not in normalized_counts.columns:
+        raise KeyError(f"{g} not found in normalized counts.")
+
+    if not df_metadata.index.equals(normalized_counts.index):
+        raise ValueError("Metadata and normalized-count sample order differs.")
+
+    plot_data = pd.DataFrame({
+        "phenotype": df_metadata.loc[normalized_counts.index, "phenotype"].astype(str),
+        "expression": normalized_counts[g]
+    })
+
+    plt.figure(figsize=(6, 5))
+    sns.boxplot(
+        data=plot_data,
+        x="phenotype",
+        y="expression",
+        order=["control", "case"],
+        width=0.5,
+        boxprops={"facecolor": "none", "zorder": 2},
+        whiskerprops={"linewidth": 1.5},
+        capprops={"linewidth": 1.5},
+        medianprops={"color": "black", "linewidth": 2},
+        showfliers=False,
+    )
+    sns.stripplot(
+        data=plot_data,
+        x="phenotype",
+        y="expression",
+        order=["control", "case"],
+        jitter=0.2,
+        size=7,
+    )
+    #plt.yscale("log1p")
+    plt.xlabel("Phenotype")
+    plt.ylabel(f"Normalized counts")
+    plt.title(f"{g}")
+    plt.tight_layout()
+    plt.show()
+
+
+
+# Volcano plot for all genes tested by DESeq2
+volcano_data = ds.results_df.copy()
+volcano_data = volcano_data.dropna(subset=["log2FoldChange", "padj"])
+volcano_data["significant"] = ((volcano_data["padj"] < padj_cutoff) & (volcano_data["log2FoldChange"].abs() >= shrunk_lfc_cutoff))
+
+# Avoid infinite values when p-values are exactly zero
+volcano_data["neg_log10_pvalue"] = -np.log10(volcano_data["padj"].clip(lower=np.finfo(float).tiny))
+
+
+
+plt.figure(figsize=(9, 7))
+sns.scatterplot(
+    data=volcano_data,
+    x="log2FoldChange",
+    y="neg_log10_pvalue",
+    hue="significant",
+    palette={True: "red", False: "lightgray"},
+    s=25,
+    linewidth=0,
+)
+
+plt.axvline(1, color="black", linestyle="--", linewidth=1)
+plt.axvline(-1, color="black", linestyle="--", linewidth=1)
+plt.axhline(-np.log10(0.05), color="black", linestyle="--", linewidth=1)
+
+plt.xlabel("Log2 fold change")
+plt.ylabel("-Log10(p-value)")
+plt.title("DESeq2 volcano plot")
+plt.legend(title="", labels=["pval < 0.05 and log2FC >= 1", "Rest"])
+plt.tight_layout()
+plt.show()
+
 #TODO google common mistakes in deseq2 analysis and check
 #TODO perform the analysis and compare with the papers github & results https://github.com/aegardella/cfRNA_MECFS/blob/main/Scripts/Manuscript_files/deseq2_res.csv
 #TODO add additional metadta from their github??
