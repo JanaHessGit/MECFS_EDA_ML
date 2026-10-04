@@ -15,16 +15,19 @@ base = Path("../data/raw/GSE293840")
 SAVE = True
 OUTPUT_PATH = Path("../data/processed/GSE293840")
 
+
+######### Preparation of the data for DESeq2 analysis
 # Load prepared data: counts and metadata merged 
 df = prepare(counts_path=base / "GSE293840_raw_counts_all.csv", metadata_path=base / "GSE293840_family.soft.gz", out_dir=Path("../data/processed/GSE293840"), save=False, geo_id="GSE293840")
 df.index = df["patient_id"]
 
-df_metadata = df.iloc[:, :41]
+#find columns that do not start with ENSG
+df_metadata = df.loc[:, ~df.columns.str.startswith("ENSG")]
 #set order of phenotype categories to control first, case second, so that the log2 fold change is calculated as case vs control
 df_metadata["phenotype"] = pd.Categorical(df_metadata["phenotype"], categories=["control", "case"])
-df_counts = df.iloc[:, 41:]
+#find count columns that start with ENSG
+df_counts = df.loc[:, df.columns.str.startswith("ENSG")]
 
-df_counts_all = df_counts.copy()
 
 
 #filter out lowly expressed genes
@@ -32,15 +35,20 @@ min_counts = 10
 min_occurrence = 3
 #at least 10 counts in at least 3 samples
 #genes_with_min_x_counts = ((df_counts >= min_counts).sum(axis=0) >= min_occurrence)
-#at least 10 counts
+#at least 10 counts across all samples
 check_min_x_count = df_counts.sum(axis=0) >= min_counts
 genes_keep = check_min_x_count[check_min_x_count]
 genes_remove = check_min_x_count[~check_min_x_count]
+tmp = df_counts.copy()
 df_counts = df_counts.loc[:, genes_keep.index]
-df_counts_removed = df_counts_all.loc[:, genes_remove.index]
+df_counts_removed = tmp.loc[:, genes_remove.index]
 print("Number of genes removed due to low counts:", df_counts_removed.shape[1])
 
-#set up a deseq2 dataset
+#ensure that the order of samples in counts and metadata is the same
+if not df_counts.index.equals(df_metadata.index):
+    raise ValueError("Counts and metadata sample order differs after preparation step.")
+
+######### Set up a deseq2 object with the counts and metadata, and specify the design formula for the differential abundance analysis
 inference = DefaultInference(n_cpus=8)
 dds = DeseqDataSet(
     counts=df_counts,
@@ -51,19 +59,24 @@ dds = DeseqDataSet(
 )
 
 
-# Variance-stabilizing transformation (VST) to get values that are now approximately homoskedastic: variance is constant across the range of mean values, especially for low mean.
-# genes with higher counts often have larger variance because we just are in higher numbers (=counts)
-dds.vst()
 
+######### VST transformation
+# Variance-stabilizing transformation (VST) to transform values approximately homoskedastic: variance is constant across the range of mean values, especially for low mean.
+# genes with higher counts often have larger variance because we just are in higher numbers (=counts)
+# needed for visualization and clustering, e.g. PCA
+dds.vst()
 if SAVE:
     dds.to_df(layer="vst_counts").to_csv(OUTPUT_PATH / "counts_vst_output.csv")
 
 
-# Do PCA and check if I need to consider any other confounders in the deseq2 diff abundance analysis
-if not dds.to_df(layer="vst_counts").index.equals(df_metadata.index):
-    raise ValueError("Not the same patient id order.")
 
+######### PCA 
+# and check if I need to consider any other confounders in the deseq2 diff abundance analysis
 vst = dds.to_df(layer="vst_counts")
+
+if not vst.index.equals(df_metadata.index):
+    raise ValueError("Not the same patient id order after vst transformation.")
+
 
 #TODO add age
 X = np.asarray(vst)
@@ -80,30 +93,39 @@ for p in selected_phenotype:
     plt.legend(title=p)
     plt.show()
 
-#does not seem like the batch, case/control, hospital location, sex are separator in the PCA plot
+# -> does not seem like the batch, case/control, hospital location, sex are clear separators in the PCA plot
 
 
 
 
-#count normalization by median of ratios method
+
+######### Count normalization by median of ratios method with DESeq2
 dds.deseq2()
-print(dds)
 normalized_counts=dds.to_df(layer="normed_counts")
 normalized_counts.shape
 print(dds.varm["LFC"])
 
 
+#Cooks distance
 #The deseq2() function calculates, for every gene and for every sample, a diagnostic test for outliers called Cook’s distance. 
 #Cook’s distance is a measure of how much a single sample is influencing the fitted coefficients for a gene, and a large value of Cook’s distance is intended to indicate an outlier count.
-cooks = pd.DataFrame(
-    dds.layers["cooks"],
-    index=dds.obs_names,  # samples
-    columns=dds.var_names  # genes
-)
-
+#it might also replace outlier counts and refit affected genes when the replicate requirements are met.
+cooks = pd.DataFrame(dds.layers["cooks"], index=dds.obs_names, columns=dds.var_names)
 max_cooks_by_gene = cooks.max(axis=0).sort_values(ascending=False)
 print(max_cooks_by_gene.head(20))
+refitted = dds.var["refitted"].fillna(False).astype(bool)
+print("Number of refitted genes:", refitted.sum())
+print("Refitted genes:")
+print(dds.var.index[refitted].tolist())
+replaced = dds.var["replaced"].fillna(False).astype(bool)
+print("Number of replaced genes:", replaced.sum())
+print("Replaced genes:")
+print(dds.var.index[replaced].tolist())
 
+
+
+
+#Dispersion
 #examine if data is a good fit for the DESeq2 model
 #data generally scatters around the curve, with the dispersion decreasing with increasing mean levels.
 #Red dots: Individual genes with very high dispersion outliers. These genes have a raw variance that is much higher than what the fitted red/blue trend line predicts for their expression level.
@@ -113,28 +135,10 @@ plt.show()
 if SAVE:
     dds.to_df(layer="normed_counts").to_csv(OUTPUT_PATH / "normalized_counts.csv")
 
-#DESeq2 estimates fold changes from a negative-binomial generalized linear model, rather than simply calculating ratios of group means. The resulting coefficient represents the log2 fold change between the conditions.
-#pvalue is calculated using Wald test
-#padj is determined by Benjamini Hochberg procedure
-#genes which contain a Cook’s distance above a cutoff for samples which have 3 or more replicates are automatically flagged. The pval and padj for these genes are set to NA. When there are 7 or more replicates for a given sample, the DESeq function will automatically replace counts with large Cook’s distance with the trimmed mean over all samples, scaled up by the size factor or normalization factor for that sample. 
-ds = DeseqStats(dds, 
-                contrast=["phenotype", "case", "control"], 
-                inference=inference, 
-                alpha=0.05,    
-                #add this if no genes should be removed before the multiple testing correction to reduce the number of tests to tests tht have a chance of being significant
-                #independent_filter=False,
-                )
-ds.summary()
-ds.results_df.head()
-
-if SAVE:
-    ds.results_df.to_csv(OUTPUT_PATH / "deseq2_results.csv")
 
 
 
-
-
-#Plot the unfiltered count matrix as heatmap for top 20 genes
+#Plot the unfiltered count matrix as heatmap for 20 genes with highest count across samples
 heatmap_gene_count = min(20, normalized_counts.shape[1])
 top_abundant_genes = normalized_counts.sum(axis=0).nlargest(heatmap_gene_count).index
 heatmap_data = normalized_counts.loc[:, top_abundant_genes].T
@@ -172,7 +176,32 @@ if SAVE:
 
 
 
-# LFC shrinkage using Bayesian inference
+
+######### Differential abundance analysis with DESeq2
+#DESeq2 estimates fold changes from a negative-binomial generalized linear model, rather than simply calculating ratios of group means. The resulting coefficient represents the log2 fold change between the conditions.
+#pvalue is calculated using Wald test
+#padj is determined by Benjamini Hochberg procedure
+#genes which contain a Cook’s distance above a cutoff for samples which have 3 or more replicates are automatically flagged. The pval and padj for these genes are set to NA. When there are 7 or more replicates for a given sample, the DESeq function will automatically replace counts with large Cook’s distance with the trimmed mean over all samples, scaled up by the size factor or normalization factor for that sample. 
+ds = DeseqStats(dds, 
+                contrast=["phenotype", "case", "control"], 
+                inference=inference, 
+                alpha=0.05,    
+                )
+ds.summary()
+ds.results_df.head()
+
+if SAVE:
+    ds.results_df.to_csv(OUTPUT_PATH / "deseq2_results.csv")
+
+
+
+
+
+
+
+
+
+######### LFC shrinkage using Bayesian inference
 # goal is to make log2 fold-change estimates more reliable, 
 # particularly for genes with low counts or high variation. 
 # It pulls noisy, extreme estimates toward zero while leaving well-supported estimates largely unchanged. 
@@ -196,12 +225,15 @@ plt.show()
 
 ds_unshrunken_fc.equals(ds.results_df["log2FoldChange"])
 
-
 if SAVE:
     ds.results_df.to_csv(OUTPUT_PATH / "deseq2_results_with_shrunk_lfcs.csv")
 
 
-#filter diff abundance results based on log2fc and padj
+
+
+
+
+######### Filter diff. abundance results based on log2fc and padj
 padj_cutoff = 0.05
 shrunk_lfc_cutoff = 1
 print("Number of genes with pvalue missing:", ds.results_df["pvalue"].isna().sum()," out of", ds.results_df.shape[0])
@@ -233,12 +265,18 @@ if SAVE:
 
 
 
-####Visualize results###
+
+
+
+
+######### Visualize results
 
 # Scatterplot of normalized expression for one gene by phenotype
 de_genes = list(filtered_results.index)
+if SAVE:
+    boxplot_output_path = OUTPUT_PATH / "normalized_count_boxplots"
+    boxplot_output_path.mkdir(parents=True, exist_ok=True)
 
-normalized_counts = dds.to_df(layer="normed_counts")
 for g in de_genes:
     if g not in normalized_counts.columns:
         raise KeyError(f"{g} not found in normalized counts.")
@@ -276,7 +314,14 @@ for g in de_genes:
     plt.ylabel(f"Normalized counts")
     plt.title(f"{g}")
     plt.tight_layout()
+    if SAVE:
+        plt.savefig(
+            boxplot_output_path / f"{g}_normalized_counts_by_phenotype.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
     plt.show()
+
 
 
 
@@ -310,12 +355,20 @@ plt.ylabel(f"-Log10(adjusted p-value)")
 plt.title("DESeq2 volcano plot")
 plt.legend(title="", labels=[f"pval < {padj_cutoff} and log2FC >= {shrunk_lfc_cutoff}", "Rest"])
 plt.tight_layout()
+if SAVE:
+    plt.savefig(
+        OUTPUT_PATH / f"volcano_plot.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
 plt.show()
 
 
 
 
-#Heatmap of top differentially expressed genes
+
+
+# Heatmap of top differentially expressed genes
 if not df_metadata.index.equals(normalized_counts.index):
     raise ValueError("Metadata and normalized-count sample order differs.")
 
@@ -368,6 +421,5 @@ else:
 #TODO perform the analysis and compare with the papers github & results https://github.com/aegardella/cfRNA_MECFS/blob/main/Scripts/Manuscript_files/deseq2_res.csv
 #TODO sex in die design formula aufnehmen???
 #TODO add additional metadta from their github??
-#TODO code ordentlich machen
 #TODO make markdown out of it
 #TODO functionen draus machen, die ich testen kann?
