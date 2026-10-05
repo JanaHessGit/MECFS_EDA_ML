@@ -159,9 +159,9 @@ if SAVE:
     dds.to_df(layer="normed_counts").to_csv(OUTPUT_PATH / "normalized_counts.csv")
     dds.plot_dispersions(save_path = OUTPUT_PATH / "dispersion_estimates.png")
 
-"""
-#If I do not include sex in the design formula, sex is producing a large amount of systematic variation in the data.
-#If i include sex in the design formula, Y/XIST dispersion outliers largely disappear
+
+
+
 
 #look at the genes with the highest dispersion relative to the fitted trend line
 df = pd.DataFrame({
@@ -174,15 +174,65 @@ high = df[(df["mean"] > 10) & (df["log_ratio"] > 2)].sort_values("log_ratio", as
 print(len(high))
 print(high.head(40))
 print(high.head(40).index.tolist())
-#-> many Y-linked genes among the top dispersion deviations
+
+#look at the genes with high dispersion relative to the fitted trend line and high mean of normalized counts
+high_high_count = high[(high["mean"] > 1000)].sort_values("log_ratio", ascending=False)
+genes_of_interest = high_high_count.index
+
+#explore those genes with high dispersion relative to the fitted trend line and high mean of normalized counts further
+for g in genes_of_interest:
+    if g not in normalized_counts.columns:
+        raise KeyError(f"{g} not found in normalized counts.")
+
+    if not df_metadata.index.equals(normalized_counts.index):
+        raise ValueError("Metadata and normalized-count sample order differs.")
+
+    plot_data = pd.DataFrame({
+        "phenotype": df_metadata.loc[normalized_counts.index, "phenotype"].astype(str),
+        "expression": normalized_counts[g]
+    })
+
+    plt.figure(figsize=(6, 5))
+    sns.boxplot(
+        data=plot_data,
+        x="phenotype",
+        y="expression",
+        order=["case", "control"],
+        width=0.5,
+        boxprops={"facecolor": "none", "zorder": 2},
+        whiskerprops={"linewidth": 1.5},
+        capprops={"linewidth": 1.5},
+        medianprops={"color": "black", "linewidth": 2},
+        showfliers=False,
+    )
+    sns.stripplot(
+        data=plot_data,
+        x="phenotype",
+        y="expression",
+        order=["case", "control"],
+        jitter=0.2,
+        size=7,
+    )
+    plt.xlabel("Phenotype")
+    plt.ylabel(f"Normalized counts")
+    plt.title(f"{g}")
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+"""old code
+#If I do not include sex in the design formula, sex is producing a large amount of systematic variation in the data.
+#If i include sex in the design formula, Y/XIST dispersion outliers largely disappear
+#Before I included sex in the design formula, many Y-linked genes among the top dispersion deviations
 
 
 genes_of_interest = high.head(20).index.tolist()
 
-
 for g in genes_of_interest:
     if g not in normalized_counts.columns:
-        raise KeyError(f"{gY/XIST dispersion outliers largely disappear} not found in normalized counts.")
+        raise KeyError(f"{g} not found in normalized counts.")
 
     if not df_metadata.index.equals(normalized_counts.index):
         raise ValueError("Metadata and normalized-count sample order differs.")
@@ -344,6 +394,7 @@ filtered_results = ds.results_df[
     (ds.results_df["log2FoldChange"].abs() >= shrunk_lfc_cutoff)
     ]
 
+filtered_results.shape
 filtered_results.index
 if SAVE:
     filtered_results.to_csv(OUTPUT_PATH / f"deseq2_de_results_{padj_cutoff}_{shrunk_lfc_cutoff}.csv")
@@ -507,7 +558,5 @@ else:
 
 #-> paper had different results for DESEq2 analysis but challenging to compare since they did not publish their exact code
 
-#TODO sex in die design formula aufnehmen???
-#TODO add additional metadta from their github??
 #TODO make markdown out of it
 #TODO functionen draus machen, die ich testen kann?
