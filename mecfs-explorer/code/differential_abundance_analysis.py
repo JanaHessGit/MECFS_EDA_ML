@@ -113,12 +113,12 @@ for p in selected_phenotype:
 
 
 
-# -> does not seem like the batch, case/control, hospital location, sex are clear separators in the PCA plot
+# -> does not seem like the case/control, sex, .. are clear separators in the PCA plot
+# for test site a lot of Ithaca samples on the left but Ithaca has most samples ...
 # -> cfs_cfrna_58 seems to be an outlier in the PCA plot
 
 #explore the metadata for this patient
 df_metadata.iloc[df_metadata.index.get_loc("cfs_cfrna_58")]
-
 
 
 

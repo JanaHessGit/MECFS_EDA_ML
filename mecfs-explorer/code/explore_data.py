@@ -47,6 +47,35 @@ if df.shape[0] != n_f + n_m or n_na_sex > 0:
 
 df_metadata = df.loc[:, ~df.columns.str.startswith("ENSG")]
 
+
+
+#Project
+
+project_counts = (
+    df_metadata.loc[:, ["patient_id","project","test_site","sex"]]# "phenotype"]]
+    .dropna(subset=["patient_id","project","test_site", "sex"])# "sex", "phenotype"])
+    .drop_duplicates()
+    )
+
+
+project_counts = (
+    project_counts.groupby(["project","test_site","sex"])
+    .size()
+)
+
+p_phen = project_counts.plot(kind="bar", figsize=(8, 5))#, color=["#d67ac7", "#5b9bd5"])
+p_phen.set_ylabel("Number of individuals")
+for container in p_phen.containers:
+    p_phen.bar_label(container, padding=3)
+plt.tight_layout()
+plt.show()
+project_counts = (
+    project_counts.groupby(["project"])
+    .size()
+)
+
+
+
 #Age
 #show dstribution of age in the dataset
 plt.figure(figsize=(8, 5))
@@ -386,14 +415,14 @@ plt.show()
 
 
 #test_site
-#plot case control by test site
+#plot case control by test site, test site was only responsible for sample collection not sequencing etc.
 vars = ["phenotype", "sex"]
 for v in vars:
     phenotype_by_testsite_counts = (
         df.loc[:, ["patient_id", "test_site", v]].groupby([v, "test_site"])
         .size()
     )
-
+    print(phenotype_by_testsite_counts)
     p_phen = phenotype_by_testsite_counts.plot(kind="bar", figsize=(8, 5), color=["#d67ac7", "#5b9bd5", "green"])
     p_phen.set_ylabel("Number of individuals")
     for container in p_phen.containers:
@@ -404,6 +433,11 @@ for v in vars:
 # -> especially for LA are phenotypes not balanced. For NYC and Ithaca, the case/control ratio is more balanced.
 
 
+
+phenotype_sex_testsite_counts = (
+    df.loc[:, ["patient_id", "test_site", "sex", "phenotype"]].groupby(["phenotype", "sex" , "test_site"])
+    .size()
+)
 
 ### Explore counts
 df_counts = df.loc[:, df.columns.str.startswith("ENSG")]

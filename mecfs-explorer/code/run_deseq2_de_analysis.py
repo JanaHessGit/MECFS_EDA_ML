@@ -124,7 +124,7 @@ def deseq2_de_analysis(dds, inference, contrast, alpha, coeff_lfc_shrinking, sav
     ds = DeseqStats(dds, 
                     contrast=contrast, 
                     inference=inference, 
-                    alpha=alpha,#0.05,    
+                    alpha=alpha,    
                     )
     ds.summary()
     ds.results_df.head()
@@ -139,8 +139,19 @@ def deseq2_de_analysis(dds, inference, contrast, alpha, coeff_lfc_shrinking, sav
     # particularly for genes with low counts or high variation. 
     # It pulls noisy, extreme estimates toward zero while leaving well-supported estimates largely unchanged. 
     # Stabilizes the estimated effect sizes, conservative estimate given the uncertainty in the data.
-    ds.lfc_shrink(coeff=coeff_lfc_shrinking)#"phenotype[T.case]")
+    ds_unshrunken = ds
+    ds_unshrunken_fc = ds.results_df["log2FoldChange"]
+    ds_unshrunken.plot_MA()
+    plt.show()
+    if save:
+        ds_unshrunken.plot_MA(save_path= out_path / "deseq2_MA_plot_before_lfc_shrinkage.png") 
+
+
+    ds.lfc_shrink(coeff=coeff_lfc_shrinking)
     print(ds.shrunk_LFCs)
+
+    if ds_unshrunken_fc.equals(ds.results_df["log2FoldChange"]):
+        raise
 
     # Scatter plot of mean expression of normalized counts across all samples vs LFC between phenotypes
     # y axis shows up- or downregulated genes and x axis shows if gene is in mean highly/lowly expressed across all samplea and phenotypes
@@ -148,6 +159,7 @@ def deseq2_de_analysis(dds, inference, contrast, alpha, coeff_lfc_shrinking, sav
     plt.show()
 
     if save:
+        ds.plot_MA(save_path= out_path / "deseq2_MA_plot_after_lfc_shrinkage.png") 
         ds.results_df.to_csv(out_path / "deseq2_results_with_shrunk_lfcs.csv")
 
     return ds
@@ -189,9 +201,15 @@ def visualize_as_pca(vst, df_metadata, save, out_path, selected_phenotypes):
     if not all(p in df_metadata.columns for p in selected_phenotypes):
         raise ValueError(f"One or more selected phenotypes not found in metadata columns.")
 
-
+    print(selected_phenotypes)
     X = np.asarray(vst)
-    pca = PCA(n_components=2).fit_transform(X)
+    pc_model = PCA(n_components=2)
+    pca = pc_model.fit_transform(X)     
+    load_pc1 = pd.Series(pc_model.components_[0], index=vst.columns)
+    print(load_pc1.sort_values().head(20))
+    load_pc2 = pd.Series(pc_model.components_[1], index=vst.columns)
+    print(load_pc2.sort_values().head(20))
+
     for p in selected_phenotypes:
         cond = df_metadata[p].values.astype("string").fillna("NA").to_numpy()
         for phenotype in np.unique(cond):
@@ -395,14 +413,17 @@ if __name__ == "__main__":
     base = Path(str("../data/raw/") + "GSE293840")
     counts_path = base / str("GSE293840" + "_raw_counts_all.csv")
     metadata_path_gh = base / "sample_metadata_from_github.tsv"
-    out_dir = Path(str("../data/processed/") + "GSE293840" + "/phenotype_sex_and_testsite")
     condition = "phenotype"
-    design_f = "~sex+test_site+phenotype"#"~sex+phenotype"
     con = ["phenotype", "case", "control"]
     padj_cutoff = 0.05
     shrunk_lfc_cutoff = 0.5
     coeff_lfc_shrinking = "phenotype[T.case]"
-    selected_phenotypes_pca = ["phenotype","sex","test_site","age_bin","bmi_bin","vo2_peak_bin","gh_bin","mfi20_total_bin","duration_of_mecfs_bin"]
+    selected_phenotypes_pca = ["phenotype","sex","test_site","age_bin","bmi_bin","vo2_peak_bin","gh_bin","mfi20_total_bin","duration_of_mecfs_bin", "project","lib_prep_date"]
     save_data = True
+    out_dir = Path(str("../data/processed/") + "GSE293840" + "/phenotype_sex_and_testsite")
+    design_f = "~sex+test_site+phenotype"
+    #design_f = "~sex+phenotype"
+    #out_dir = Path(str("../data/processed/") + "GSE293840" + "/phenotype_and_sex")
+
 
     run_deseq2_de_analysis(counts_path, metadata_path_gh, design_f = design_f, padj_cutoff = padj_cutoff, shrunk_lfc_cutoff = shrunk_lfc_cutoff, con = con, coeff_lfc_shrinking = coeff_lfc_shrinking, selected_phenotypes_pca = selected_phenotypes_pca, save = save_data, out_dir = out_dir, geo_id = geo_id)
