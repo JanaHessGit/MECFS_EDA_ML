@@ -559,4 +559,3 @@ else:
 #-> paper had different results for DESEq2 analysis but challenging to compare since they did not publish their exact code
 
 #TODO make markdown out of it
-#TODO functionen draus machen, die ich testen kann?
