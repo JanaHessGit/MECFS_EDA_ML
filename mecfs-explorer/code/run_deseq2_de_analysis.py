@@ -125,6 +125,7 @@ def deseq2_de_analysis(dds, inference, contrast, alpha, coeff_lfc_shrinking, sav
                     contrast=contrast, 
                     inference=inference, 
                     alpha=alpha,    
+                    #cooks_filter=False
                     )
     ds.summary()
     ds.results_df.head()
@@ -233,6 +234,7 @@ def visualize_as_pca(vst, df_metadata, save, out_path, selected_phenotypes):
             pca_output_path.mkdir(parents=True, exist_ok=True)
             plt.savefig(pca_output_path / f"vst_pca_colored_by_{p}.png", dpi=300, bbox_inches="tight")
         plt.show()
+    return pc_model, pca
 
 
 
@@ -397,14 +399,14 @@ def run_deseq2_de_analysis(counts_path, metadata_path_gh, design_f,padj_cutoff,s
     if not df_counts.index.equals(df_metadata.index):
         raise ValueError("Counts and metadata sample order differs after preparation step.")
     dds, inference, vst = set_up_deseq2_object(df_counts_filtered, df_metadata, design_formula=design_f, save=save, out_path=out_dir)
-    visualize_as_pca(vst, df_metadata, save, out_path=out_dir, selected_phenotypes=selected_phenotypes_pca)
+    pc_model, pca = visualize_as_pca(vst, df_metadata, save, out_path=out_dir, selected_phenotypes=selected_phenotypes_pca)
     dds, normalized_counts = count_normalization(dds, save=save, out_path=out_dir)
     ds = deseq2_de_analysis(dds, inference, contrast=con, alpha=0.05, coeff_lfc_shrinking=coeff_lfc_shrinking, save=save, out_path=out_dir)
     filtered_results = filter_de_results(ds, padj_cutoff=padj_cutoff, shrunk_lfc_cutoff=shrunk_lfc_cutoff, save=save, out_path=out_dir)
     visualize_results_as_volcanoplot(ds, padj_cutoff=padj_cutoff, shrunk_lfc_cutoff=shrunk_lfc_cutoff, save=save, out_path=out_dir)
     visualize_results_as_heatmap(normalized_counts, df_metadata, filtered_results, condition="phenotype", save=save, out_path=out_dir)
     
-    return filtered_results, ds
+    return df_metadata, filtered_results, ds, vst, pc_model, pca
     
 
 
@@ -419,7 +421,7 @@ if __name__ == "__main__":
     shrunk_lfc_cutoff = 0.5
     coeff_lfc_shrinking = "phenotype[T.case]"
     selected_phenotypes_pca = ["phenotype","sex","test_site","age_bin","bmi_bin","vo2_peak_bin","gh_bin","mfi20_total_bin","duration_of_mecfs_bin", "project","lib_prep_date"]
-    save_data = True
+    save_data = False
     out_dir = Path(str("../data/processed/") + "GSE293840" + "/phenotype_sex_and_testsite")
     design_f = "~sex+test_site+phenotype"
     #design_f = "~sex+phenotype"
