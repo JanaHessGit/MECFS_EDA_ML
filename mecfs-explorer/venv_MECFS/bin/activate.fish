@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /home/jana/Documents/Projekte/MECFS_python_ML/mecfs-explorer/venv_MECFS
+set -gx VIRTUAL_ENV /home/jana/Documents/Projekte/MECFS_EDA_ML/mecfs-explorer/venv_MECFS
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH
