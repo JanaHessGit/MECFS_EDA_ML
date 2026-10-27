@@ -1,95 +1,109 @@
-# ME/CFS Data Explorer
+# ME/CFS cfRNA Expression Analysis
 
-A small end-to-end practice project: public ME/CFS omics data → sklearn baseline →
-PyTorch classifier → FastAPI service.
+I have been stunned by ME/CFS and the impact it has on lifes and how little treatment is yet available. I wanted to use my scientific interest in this disease to do a training project with a ME/CFS dataset. This project explores publicly available ME/CFS gene-expression data, with the
+main analysis focused on GEO series [GSE293840](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE293840), published in Gardella AE, et al. Circulating cell-free RNA signatures for the characterization and diagnosis of myalgic encephalomyelitis/chronic fatigue syndrome. Proc Natl Acad Sci U S A. 2025 Aug 19;122(33):e2507345122. doi: 10.1073/pnas.2507345122.
 
-**This is a learning project, not a diagnostic tool.** Sample sizes in this field are
-small (dozens to low hundreds) and "case"/"control" labels are criteria-based, not
-lab-confirmed. Every model here should be treated as "does this study's dataset separate
-these two labeled groups," never as "does this model diagnose ME/CFS."
+The scripts prepare raw counts and sample metadata, perform exploratory analysis,
+test for differential gene expression, and investigate sample structure with PCA
+and hierarchical clustering.
 
-See `PROJECT_PLAN.md` for the full write-up, dataset table, and research questions.
+**This is exploratory research code**
+
+## Data
+
+The main workflow expects these files under `data/raw/GSE293840/`:
+
+- `GSE293840_raw_counts_all.csv` — raw gene-count matrix.
+- `sample_metadata_from_github.tsv` — sample phenotypes and clinical,
+  demographic, and technical metadata. The metadata source is the
+  [cfRNA_MECFS study repository](https://github.com/aegardella/cfRNA_MECFS/). And the metadata file is here: https://github.com/aegardella/cfRNA_MECFS/blob/main/Scripts/Manuscript_files/sample_metadata.ts
+- alternatvely the GEO family.soft.gz file can be used with small adjustments in prepare_data.py prepare().
+
+The repository also contains supplementary materials for another study under
+`data/raw/che2022/`; those files are not part of the current GSE293840 analysis
+pipeline. Keep original input files unchanged when reproducing an analysis.
+
+## Analysis workflow
+
+1. **Prepare the data** — `code/prepare_data.py` transposes the count matrix so
+   samples are rows, standardizes columns, creates clinical
+   variable bins as defined in the Supplementary Materials Dataset S01, and joins metadata to counts by patient ID.
+2. **Explore the data** — `code/explore_data.py` checks missing values and group assignments, then plots cohort characteristics such as age, weight, height, etc. Calculates correlation between self-reported scores for general health and MFI-20 (multidimensional fatigue inventory).
+3. **Differential expression** — `code/run_deseq2_de_analysis.py` filters genes
+   with fewer than 10 counts in at least 3 samples, applies a variance
+   stabilizing transformation, and runs PyDESeq2. The current default design is
+   `~sex+test_site+phenotype`, comparing cases with controls. It also generates
+   PCA, volcano, MA, and heatmap visualizations, and can save normalized counts
+   and result tables.
+4. **Explore sample clusters** — `code/clustering.py` uses highly variable
+   transformed genes, PCA, and hierarchical clustering to explore whether
+   sample groupings may relate to phenotype or other cohort metadata.
+5. **Compare inputs and results** — `code/compare_data.py` contains checks for
+   differences between GEO and study-repository metadata and between analysis
+   outputs.
+
+`code/differential_abundance_analysis.py` is an old exploratory
+analysis script. `code/tmp.py` is scratch work.
 
 ## Setup
 
-```bash
-python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-## 1. Get data
+Create and activate a virtual environment from the project directory:
 
 ```bash
-# List what's available / see download instructions for each dataset
-python data/download_data.py --list
-
-# Download a specific GEO series (example: DNA methylation dataset)
-python data/download_data.py --geo GSE59489
-
-# Pull Metabolomics Workbench study summary + factors (metadata only — see notes in script
-# for why full data tables usually need the paper's supplementary files)
-python data/download_data.py --mw ST001849
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install pandas GEOparse numpy scipy matplotlib seaborn pydeseq2 scikit-learn openpyxl
 ```
 
-Some datasets (the Che et al. 106-vs-91 metabolomics cohort, the fMRI dataset) aren't
-available as a single clean download — you'll pull them from the paper's supplementary
-materials by hand. That's normal for this field; `data/download_data.py --list` prints
-where to find each one.
+`requirements.txt` is currently a local environment snapshot rather than a
+curated list of this project's dependencies; the install command above names
+the packages used by the analysis scripts.
 
-## 2. Baseline
+## Running the scripts
 
-Open `notebooks/02_baseline_sklearn.ipynb`. It loads whatever you dropped in
-`data/processed/`, runs an EDA pass, and fits a regularized logistic regression +
-random forest with stratified k-fold cross-validation as your benchmark. Beat this
-before you trust any deep learning result.
-
-## 3. Train the PyTorch model
+Prepare the merged sample-by-gene table from the project directory:
 
 ```bash
-python src/train.py --data data/processed/dataset.csv --target label --epochs 100
+python code/prepare_data.py
 ```
 
-This trains a small MLP (`src/models/mlp.py`) with k-fold CV, early stopping, and
-saves the best fold's weights + a `metrics.json` to `data/processed/model/`.
-
-## 4. Serve it
+Run the exploratory analysis or main differential-expression analysis from
+`code/`, because these scripts use paths relative to that directory:
 
 ```bash
-uvicorn api.main:app --reload
+cd code
+python explore_data.py
+python run_deseq2_de_analysis.py
 ```
 
-Then visit `http://127.0.0.1:8000/docs` for the interactive API docs.
+The main analysis currently sets `save_data = False`. Change that setting to
+`True` in `run_deseq2_de_analysis.py` to save outputs under
+`data/processed/GSE293840/phenotype_sex_and_testsite/`. Outputs include
+normalized and variance-stabilized counts, differential-expression tables,
+PCA plots, a volcano plot, MA plots, dispersion estimates, and a heatmap.
+The analysis displays plots interactively as well; use a graphical session or
+configure a non-interactive Matplotlib backend when running headlessly.
 
-## 5. Test
+The clustering script also calls the analysis with saving disabled by default.
+Its parameters, including the number of variable genes and clusters, are
+exploratory choices in the script and should be assessed for sensitivity.
 
-```bash
-pytest tests/
-```
+## Project layout
 
-## Repo layout
-
-```
+```text
 mecfs-explorer/
+├── code/
+│   ├── prepare_data.py
+│   ├── explore_data.py
+│   ├── run_deseq2_de_analysis.py
+│   ├── differential_abundance_analysis.py
+│   ├── clustering.py
+│   ├── compare_data.py
+│   └── tmp.py
 ├── data/
-│   ├── raw/               # downloaded files (gitignored)
-│   ├── processed/         # cleaned data + trained model artifacts
-│   └── download_data.py
-├── notebooks/
-│   └── 02_baseline_sklearn.ipynb
-├── src/
-│   ├── data/loaders.py     # cleaning / feature prep, shared by notebook + train.py
-│   ├── models/mlp.py        # PyTorch model definition
-│   ├── train.py              # k-fold training loop
-│   └── evaluate.py            # metrics, SHAP feature importance
-├── api/
-│   ├── main.py
-│   ├── schemas.py
-│   └── routers/
-│       ├── predict.py
-│       └── eda.py
-├── tests/test_api.py
+│   ├── raw/       # GEO counts, metadata, and study supplements
+│   └── processed/ # prepared tables, analysis results, and plots
 ├── requirements.txt
-├── Dockerfile
-└── PROJECT_PLAN.md
+└── setup_virt_environment.txt
 ```

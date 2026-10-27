@@ -108,8 +108,11 @@ plt.show()
 
 
 
-phenotype_markers = {'case': 'o', 'control': 's'}  # Example mapping: 'o' for case, 's' for control
+phenotype_markers = {'case': 'o', 'control': 's'}
+#TODO also test other markers
+#TODO save plots
 
+#TODO understand
 # Scatter plot showing clusters and phenotype as shapes
 plt.figure(figsize=(8, 6))
 for phenotype, marker in phenotype_markers.items():
@@ -124,6 +127,8 @@ plt.ylabel('PC2')
 plt.colorbar(label='Cluster')
 plt.legend(title='Phenotype')
 plt.show()
+#TODO other clustering method?
+
 
 
 

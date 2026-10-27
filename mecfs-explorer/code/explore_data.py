@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+#TODO ausführbar machen
+
 
 base = Path("../data/raw/GSE293840")
 
@@ -17,11 +19,20 @@ print(df.shape)
 print(df.head())
 #df.describe().T
 
-#check for missing values across all columns
+#check for missing values across all columns and explore
 missing = df.isna().sum()
 print(missing[missing > 0])
+df_missing_age = df.loc[df["age"].isna()]
+df_missing_age
+df_missing_weight = df.loc[df["weight"].isna()]
+df_missing_weight
+df_missing_height = df.loc[df["height"].isna()]
+df_missing_height
+df_missing_dur = df.loc[df["mecfs_duration"].isna()]
+df_missing_dur.loc[df_missing_dur["phenotype"] == "case"]
 
-
+#TODO understand project ids
+df[["project","test_site"]].drop_duplicates()
 
 # Make sure no phenotypes are missing
 df["phenotype"].unique()
@@ -49,7 +60,7 @@ df_metadata = df.loc[:, ~df.columns.str.startswith("ENSG")]
 
 
 
-#Project
+#visualize how many patients per project/test_site/phenotype
 
 project_counts = (
     df_metadata.loc[:, ["patient_id","project","test_site","sex"]]# "phenotype"]]
@@ -76,6 +87,58 @@ project_counts = (
 
 
 
+
+
+# Plot case/control counts
+sex_by_phenotype = (
+    df.loc[:, ["patient_id", "sex", "phenotype"]]
+    .dropna(subset=["patient_id", "sex", "phenotype"])
+    .drop_duplicates()
+    .assign(sex=lambda d: d["sex"].astype(str).str.strip().str.lower())
+)
+
+counts_phenotype = (
+    sex_by_phenotype.groupby(["phenotype"])
+    .size()
+)
+
+p_phen = counts_phenotype.plot(kind="bar", figsize=(8, 5), color=["#5b9bd5", "#5b9bd5"])
+p_phen.set_ylabel("Number of individuals")
+for container in p_phen.containers:
+    p_phen.bar_label(container, padding=3)
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+# Plot how many female and male subjects are in each phenotype group
+sex_by_phenotype = sex_by_phenotype[
+    sex_by_phenotype["sex"].isin(["female", "male"])
+]
+counts = (
+    sex_by_phenotype.groupby(["phenotype", "sex"])
+    .size()
+    .unstack(fill_value=0)
+    .reindex(index=["case", "control"], columns=["female", "male"], fill_value=0)
+)
+
+p_sex = counts.plot(kind="bar", figsize=(8, 5), color=["green", "blue"])
+p_sex.set_xlabel("Phenotype")
+p_sex.set_ylabel("Number of individuals")
+p_sex.set_title("Female/Male by phenotype")
+p_sex.legend(title="Sex")
+for container in p_sex.containers:
+    p_sex.bar_label(container, padding=3)
+plt.tight_layout()
+plt.show()
+# A lot more females than males in both groups, but especially in the case group. 
+
+
+
+
+
 #Age
 #show dstribution of age in the dataset
 plt.figure(figsize=(8, 5))
@@ -89,7 +152,7 @@ plt.show()
 
 
 
-#show dstribution of age in the dataset per group
+#show dstribution of age in the dataset per penotype
 plt.figure(figsize=(8, 5))
 sns.violinplot(
     data=df_metadata,
@@ -110,13 +173,16 @@ sns.stripplot(
     order=["case", "control"],
     color= "black",
     size=4,
-    jitter=0.15
+    jitter=0.15,
+    legend=False
 )
 plt.title("Age by group")
 plt.xlabel("Age")
 plt.ylabel("Number of individuals")
 plt.tight_layout()
 plt.show()
+
+
 
 
 #Weight
@@ -141,7 +207,8 @@ sns.stripplot(
     order=["case", "control"],
     color= "black",
     size=4,
-    jitter=0.15
+    jitter=0.15,
+    legend=False
 )
 plt.title("Weight by group")
 plt.xlabel("Phenotype")
@@ -174,7 +241,8 @@ sns.stripplot(
     order=["case", "control"],
     color= "black",
     size=4,
-    jitter=0.15
+    jitter=0.15,
+    legend=False
 )
 plt.title("Height by group")
 plt.xlabel("Phenotype")
@@ -205,7 +273,8 @@ sns.stripplot(
     order=["case", "control"],
     color= "black",
     size=4,
-    jitter=0.15
+    jitter=0.15,
+    legend=False
 )
 plt.title("BMI by group")
 plt.xlabel("Phenotype")
@@ -215,8 +284,11 @@ plt.show()
 
 
 
-#VO2Peak
-#show dstribution of VO2Peak in the dataset per group
+# VO2Peak: the highest rate of oxygen your body consumes 
+# during a specific exercise test or workout session. 
+# It is measured in milliliters of oxygen per kilogram of 
+# body weight per minute (ml/kg/min).
+# show dstribution of VO2Peak in the dataset per group
 plt.figure(figsize=(8, 5))
 sns.violinplot(
     data=df_metadata,
@@ -237,7 +309,8 @@ sns.stripplot(
     order=["case", "control"],
     color= "black",
     size=4,
-    jitter=0.15
+    jitter=0.15,
+    legend=False
 )
 plt.title("VO2Peak by group")
 plt.xlabel("Phenotype")
@@ -265,13 +338,23 @@ plt.title("Distribution of ME/CFS duration")
 plt.tight_layout()
 plt.show()
 
+
+
 #collection_date
 df_metadata["collection_date"].unique()
+#wide range
+df_metadata["collection_date"].min()
+df_metadata["collection_date"].max()
+df_metadata.loc[df_metadata["collection_date"] == df_metadata["collection_date"].max()]
+
+df_metadata["lib_prep_date"].min()
+df_metadata["lib_prep_date"].max()
+
+
+
 #GH (general health) survey scores ranged from 0 (worst health) to 100 (perfect health)
 #MFI-20 (multidimensional fatigue inventory) ranged from 100 (highest fatigue) to 0 (no fatigue)
 #both scores are self reported
-
-
 #show dstribution of GH in the dataset per group
 plt.figure(figsize=(8, 5))
 sns.violinplot(
@@ -293,7 +376,8 @@ sns.stripplot(
     order=["case", "control"],
     color= "black",
     size=4,
-    jitter=0.15
+    jitter=0.15,
+    legend=False
 )
 plt.title("GH by group (range 0 (worst health) to 100 (perfect health))")
 plt.xlabel("Phenotype")
@@ -305,6 +389,8 @@ plt.show()
 
 
 #show dstribution of MFI-20 in the dataset per group
+#MFI-20 (multidimensional fatigue inventory) ranged from 100 (highest fatigue) to 0 (no fatigue)
+#score is self reported
 plt.figure(figsize=(8, 5))
 sns.violinplot(
     data=df_metadata,
@@ -325,7 +411,8 @@ sns.stripplot(
     order=["case", "control"],
     color= "black",
     size=4,
-    jitter=0.15
+    jitter=0.15,
+    legend=False
 )
 plt.title("MFI-20 total by group")
 plt.xlabel("Phenotype")
@@ -336,13 +423,14 @@ plt.show()
 
 
 
-
+# Correlation btw General health and MFI-20
 # keep only complete cases for the two variables
 corr_df = df_metadata[["GH", "mfi20_total","phenotype"]].dropna()
 
 # Pearson correlation
 r = corr_df["GH"].corr(corr_df["mfi20_total"])
 print(f"Pearson correlation GH vs MFI-20: {r:.3f}")
+# Spearman correlation
 rho, p_value = stats.spearmanr(corr_df["GH"], corr_df["mfi20_total"])
 print(f"Spearman correlation GH vs MFI-20: {rho:.3f}")
 
@@ -350,65 +438,22 @@ print(f"Spearman correlation GH vs MFI-20: {rho:.3f}")
 plt.figure(figsize=(7, 6))
 sns.regplot(
     data=corr_df,
-    x="GH",
-    y="mfi20_total",
+    x="mfi20_total",
+    y="GH",
     scatter_kws={"alpha": 0.7},
     line_kws={"color": "crimson"}
 )
 
-plt.title(f"GH vs MFI-20_total (cases only) (rho = {rho:.3f})")
-plt.xlabel("GH (0 = worst health, 100 = perfect health)")
-plt.ylabel("MFI-20 total (100 = highest fatigue, 0 = no fatigue)")
+plt.title(f"GH vs MFI-20_total (cases only) (Spearman rho = {rho:.3f})")
+plt.ylabel("GH (0 = worst health, 100 = perfect health)")
+plt.xlabel("MFI-20 total (100 = highest fatigue, 0 = no fatigue)")
 plt.tight_layout()
 plt.show()
 
 
 
 
-# Plot case/control counts
-sex_by_phenotype = (
-    df.loc[:, ["patient_id", "sex", "phenotype"]]
-    .dropna(subset=["patient_id", "sex", "phenotype"])
-    .drop_duplicates()
-    .assign(sex=lambda d: d["sex"].astype(str).str.strip().str.lower())
-)
 
-counts_phenotype = (
-    sex_by_phenotype.groupby(["phenotype"])
-    .size()
-)
-
-p_phen = counts_phenotype.plot(kind="bar", figsize=(8, 5), color=["#d67ac7", "#5b9bd5"])
-p_phen.set_ylabel("Number of individuals")
-for container in p_phen.containers:
-    p_phen.bar_label(container, padding=3)
-plt.tight_layout()
-plt.show()
-
-
-
-
-# Plot how many female and male subjects are in each phenotype group
-sex_by_phenotype = sex_by_phenotype[
-    sex_by_phenotype["sex"].isin(["female", "male"])
-]
-counts = (
-    sex_by_phenotype.groupby(["phenotype", "sex"])
-    .size()
-    .unstack(fill_value=0)
-    .reindex(index=["case", "control"], columns=["female", "male"], fill_value=0)
-)
-
-p_sex = counts.plot(kind="bar", figsize=(8, 5), color=["green", "blue"])
-p_sex.set_xlabel("Phenotype")
-p_sex.set_ylabel("Number of individuals")
-p_sex.set_title("Female/Male by phenotype")
-p_sex.legend(title="Sex")
-for container in p_sex.containers:
-    p_sex.bar_label(container, padding=3)
-plt.tight_layout()
-plt.show()
-# A lot more females than males in both groups, but especially in the case group. 
 
 
 
@@ -523,12 +568,11 @@ plt.show()
 
 
 
-
+#Explore genes with less than 10 counts
 genes_with_less_10counts = df_counts.columns[df_counts.sum(axis=0) < 10]
 
 
 genes_with_less_10counts
-#gene = df_counts.columns[0]  # choose the gene to compare
 gene = "ENSG00000005981.13" # choose the gene to compare
 
 plot_data = df[["phenotype"]].copy()
@@ -558,6 +602,5 @@ plt.ylabel(f"Count for {gene}")
 plt.tight_layout()
 plt.show()
 
-#TODO ausführbar machen
 
 
