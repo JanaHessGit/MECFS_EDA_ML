@@ -531,7 +531,7 @@ plt.show()
 genes_with_less_10counts = df_counts.columns[df_counts.sum(axis=0) < 10]
 
 
-genes_with_less_10counts
+print(genes_with_less_10counts)
 gene = "ENSG00000005981.13"  # choose the gene to compare
 
 plot_data = df[["phenotype"]].copy()

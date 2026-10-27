@@ -50,8 +50,8 @@ analysis script. `code/tmp.py` is scratch work.
 Create and activate a virtual environment from the project directory:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python3 -m venv venv_MECFS
+source venv_MECFS/bin/activate   # Windows: venv_MECFS\Scripts\activate
 python -m pip install --upgrade pip
 python -m pip install pandas GEOparse numpy scipy matplotlib seaborn pydeseq2 scikit-learn openpyxl
 ```

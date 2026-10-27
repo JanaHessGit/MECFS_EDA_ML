@@ -7,9 +7,7 @@ import seaborn as sns
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.default_inference import DefaultInference
 from pydeseq2.ds import DeseqStats
-from pydeseq2.utils import load_example_data
 from sklearn.decomposition import PCA
-from matplotlib.patches import Patch
 
 
 # Load the data for DESeq2 analysis
@@ -152,7 +150,9 @@ def deseq2_de_analysis(
     print(ds.shrunk_LFCs)
 
     if ds_unshrunken_fc.equals(ds.results_df["log2FoldChange"]):
-        raise
+        raise ValueError(
+            "Unshrunken and shrunken fold changes are equal."
+        )
 
     # Scatter plot of mean expression of normalized counts across all samples vs LFC between phenotypes
     # y axis shows up- or downregulated genes and x axis shows if gene is in mean highly/lowly expressed across all samplea and phenotypes
@@ -316,9 +316,7 @@ def visualize_results_as_heatmap(
         heatmap_data = np.log2(normalized_counts.loc[:, de_genes] + 1).T
 
         # phenotype_palette = {"control": "#4C78A8", "case": "#E45756"}
-        sample_condition = df_metadata.loc[normalized_counts.index, condition].astype(
-            str
-        )
+        #sample_condition = df_metadata.loc[normalized_counts.index, condition].astype(str)
         # column_colors = sample_condition.map(phenotype_palette).rename("Phenotype")
 
         heatmap = sns.clustermap(
