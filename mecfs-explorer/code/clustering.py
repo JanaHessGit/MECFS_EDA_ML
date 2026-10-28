@@ -64,7 +64,12 @@ df_metadata, filtered_results, ds, vst, pc_model, pca = run_deseq2_de_analysis(
 )
 
 
-# filter top_n variable genes in vst data
+
+
+####### Cluster Analysis ######
+
+
+# Filter top_n variable genes in vst data
 top_n = 2000
 gene_var = vst.var(axis=0)
 top_genes = gene_var.sort_values(ascending=False).index[:top_n]
@@ -78,147 +83,229 @@ plt.xlabel("mean VST")
 plt.ylabel("variance")
 plt.legend()
 plt.show()
-# ->genes across all means were selected
-
-# Perform PCA and visualize scree plot
-X = np.asarray(vst_top_genes)
-pca = PCA(n_components=50, random_state=0)
-pca_fit = pca.fit_transform(X)
-ev = pca.explained_variance_ratio_ * 100
-plt.figure(figsize=(8, 5))
-plt.plot(range(1, len(ev) + 1), ev, marker="o", linestyle="-", color="b")
-plt.title("Scree Plot")
-plt.xlabel("Principal Component")
-plt.ylabel("Explained Variance (%)")
-plt.xticks(range(1, len(ev) + 1))
-plt.grid()
-plt.show()
-# -> elbow method, use first 5 PCAs for clustering
-
-
-# Create a DataFrame from the first n PCA components
-n_components = 5
-Z_n = pca_fit[:, :n_components]
-pca_columns = [f"PC{i + 1}" for i in range(n_components)]
-pca_df = pd.DataFrame(Z_n, columns=pca_columns)
-# pca keeps the row order so assign the patient_ids to pca_df
-pca_df.index = vst_top_genes.index
-# add metadata
-merged_df = pd.merge(pca_df, df_metadata, left_index=True, right_index=True)
-
-
-# Perform hierarchical clustering
-plt.figure(figsize=(8, 5))
-linkage_matrix = linkage(pca_df, method="ward")
-dendrogram(linkage_matrix)
-plt.title("Dendrogram")
-plt.xlabel("Samples")
-plt.ylabel("Euclidean Distance")
-plt.show()
-
-n_clusters = 5
-cluster_labels = fcluster(linkage_matrix, t=n_clusters, criterion="maxclust")
-
-plt.figure(figsize=(8, 6))
-plt.scatter(pca_df["PC1"], pca_df["PC2"], c=cluster_labels, cmap="tab10", s=50)
-plt.title("Hierarchical Clustering Scatter Plot (fcluster)")
-plt.xlabel("PC1")
-plt.ylabel("PC2")
-plt.colorbar(label="Cluster")
-plt.show()
+# -> genes across all means were selected
 
 
 
-# Scatter plot showing clusters as color and other metadata as shapes
-# version 1: variables as shapes
 
-output_plot_dir = Path(f"../output/clustering_plots_{n_components}pcs_{top_n}genes_{n_clusters}clusters")
-output_plot_dir.mkdir(parents=True, exist_ok=True)
-
-
-variables_to_plot = [
-    "phenotype",
-    "sex",
-    "test_site",
-    "age_bin",
-    "bmi_bin",
-    "vo2_peak_bin",
-    "gh_bin",
-    "project",
-]
-
-cluster_by_sample = pd.Series(cluster_labels, index=pca_df.index)
-
-for name_var in variables_to_plot:
-    values = merged_df[name_var].dropna().unique()
-
-    if len(values) == 0:
-        raise ValueError(f"No non-missing values found for {name_var}.")
-
-    cmap_name = "tab10" if len(values) <= 10 else "tab20"
-    cmap = plt.get_cmap(cmap_name, len(values))
-    category_colors = {
-        value: cmap(i) for i, value in enumerate(values)
-    }
-
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    for value in values:
-        subset = merged_df.loc[merged_df[name_var] == value]
-        subset_cluster_labels = cluster_by_sample.loc[subset.index]
-
-        ax.scatter(
-            subset["PC1"],
-            subset["PC2"],
-            color=category_colors[value],
-            s=100,
-            edgecolors="white",
-            linewidths=0.5,
-            label=str(value),
-        )
-
-        for x, y, cluster in zip(
-            subset["PC1"],
-            subset["PC2"],
-            subset_cluster_labels,
-        ):
-            ax.annotate(
-                str(cluster),
-                (x, y),
-                ha="center",
-                va="center",
-                fontsize=8,
-                color="black",
-                bbox={
-                    "boxstyle": "circle,pad=0.15",
-                    "facecolor": "white",
-                    "edgecolor": "none",
-                    "alpha": 0,
-                },
-            )
-
-    ax.set_title(f"PCA clusters by {name_var}")
-    ax.set_xlabel("PC1")
-    ax.set_ylabel("PC2")
-    ax.text(
-        0.02,
-        0.02,
-        "Number on each point = cluster",
-        transform=ax.transAxes,
-        fontsize=9,
-    )
-    ax.legend(title=name_var, bbox_to_anchor=(1.02, 1), loc="upper left")
-    fig.tight_layout()
+def perform_pca(selected_data, output_plot_dir):
+    X = np.asarray(selected_data)
+    pca = PCA(n_components=50, random_state=0)
+    pca_fit = pca.fit_transform(X)
+    ev = pca.explained_variance_ratio_ * 100
+    fig = plt.figure(figsize=(8, 5))
+    plt.plot(range(1, len(ev) + 1), ev, marker="o", linestyle="-", color="b")
+    plt.title("Scree Plot")
+    plt.xlabel("Principal Component")
+    plt.ylabel("Explained Variance (%)")
+    plt.xticks(range(1, len(ev) + 1))
+    plt.grid()
     fig.savefig(
-        output_plot_dir / f"clusters_by_{name_var}_color_numbered.png",
+        output_plot_dir / f"pca_screeplot.png",
         dpi=300,
         bbox_inches="tight",
     )
     plt.show()
 
+    return pca_fit, pca
 
 
-# version 2: variables as shapes
+# Create a DataFrame from the first n PCA components
+def df_from_pca_components(n_components, pca_fit, selected_data, df_metadata):
+    Z_n = pca_fit[:, :n_components]
+    pca_columns = [f"PC{i + 1}" for i in range(n_components)]
+    pca_df = pd.DataFrame(Z_n, columns=pca_columns)
+    # pca keeps the row order so assign the patient_ids to pca_df
+    pca_df.index = vst_top_genes.index
+    # add metadata
+    merged_df = pd.merge(pca_df, df_metadata, left_index=True, right_index=True)
+    return pca_df, merged_df
+
+
+def draw_dendogram(pca_df, method, output_plot_dir):
+    fig = plt.figure(figsize=(8, 5))
+    linkage_matrix = linkage(pca_df, method = method)
+    dendrogram(linkage_matrix)
+    plt.title("Dendrogram")
+    plt.xlabel("Samples")
+    fig.savefig(
+        output_plot_dir / f"dendogram_hierarcical_clustering_method_{method}.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.show()
+    return linkage_matrix
+
+
+def perform_hierachichal_clustering(n_clusters, linkage_matrix, criterion_clust, output_plot_dir):
+
+    cluster_labels = fcluster(linkage_matrix, t=n_clusters, criterion=criterion_clust)
+    fig =plt.figure(figsize=(8, 6))
+    plt.scatter(pca_df["PC1"], pca_df["PC2"], c=cluster_labels, cmap="tab10", s=50)
+    plt.title("Hierarchical Clustering Scatter Plot (fcluster)")
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.colorbar(label="Cluster")
+    fig.savefig(
+        output_plot_dir / f"PC1_PC2_hierarcical_clustering_method_{criterion_clust}.png",
+        dpi=300,
+        bbox_inches="tight",
+    )    
+    plt.show()
+    return cluster_labels
+
+
+
+# Scatter plot showing clusters as number and other metadata as color
+def scatter_plot_clusters_as_color_metadata_as_shape(merged_df, vars_to_plot, cluster_labels, pca_df, output_plot_dir):
+    cluster_by_sample = pd.Series(cluster_labels, index=pca_df.index)
+
+    for name_var in vars_to_plot:
+        values = merged_df[name_var].dropna().unique()
+
+        if len(values) == 0:
+            raise ValueError(f"No non-missing values found for {name_var}.")
+
+        cmap_name = "tab10" if len(values) <= 10 else "tab20"
+        cmap = plt.get_cmap(cmap_name, len(values))
+        category_colors = {
+            value: cmap(i) for i, value in enumerate(values)
+        }
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        for value in values:
+            subset = merged_df.loc[merged_df[name_var] == value]
+            subset_cluster_labels = cluster_by_sample.loc[subset.index]
+
+            ax.scatter(
+                subset["PC1"],
+                subset["PC2"],
+                color=category_colors[value],
+                s=100,
+                edgecolors="white",
+                linewidths=0.5,
+                label=str(value),
+            )
+
+            for x, y, cluster in zip(
+                subset["PC1"],
+                subset["PC2"],
+                subset_cluster_labels,
+            ):
+                ax.annotate(
+                    str(cluster),
+                    (x, y),
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="black",
+                    bbox={
+                        "boxstyle": "circle,pad=0.15",
+                        "facecolor": "white",
+                        "edgecolor": "none",
+                        "alpha": 0,
+                    },
+                )
+
+        ax.set_title(f"PCA clusters by {name_var}")
+        ax.set_xlabel("PC1")
+        ax.set_ylabel("PC2")
+        ax.text(
+            0.02,
+            0.02,
+            "Number on each point = cluster",
+            transform=ax.transAxes,
+            fontsize=9,
+        )
+        ax.legend(title=name_var, bbox_to_anchor=(1.02, 1), loc="upper left")
+        fig.tight_layout()
+        fig.savefig(
+            output_plot_dir / f"clusters_by_{name_var}_color_numbered.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.show()
+    return 1
+
+
+
+# Scatter plot showing clusters as color and other metadata as shape
+def scatter_plot_clusters_as_color_metadata_as_shape(merged_df, vars_to_plot, cluster_labels, pca_df, output_plot_dir):
+    marker_symbols = ["o", "s", "^", "D", "P", "X", "v", "<", ">", "*"]
+    cluster_by_sample = pd.Series(cluster_labels, index=pca_df.index)
+
+    for name_var in vars_to_plot:
+        values = merged_df[name_var].dropna().unique()
+
+        if len(values) == 0:
+            raise ValueError(f"No non-missing values found for {name_var}.")
+        if len(values) > len(marker_symbols):
+            raise ValueError(
+                f"{name_var} has {len(values)} categories, "
+                f"but only {len(marker_symbols)} marker shapes are defined."
+            )
+
+        var_markers = dict(zip(values, marker_symbols))
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        for value, marker in var_markers.items():
+            subset = merged_df.loc[merged_df[name_var] == value]
+            subset_cluster_labels = cluster_by_sample.loc[subset.index]
+
+            scatter = ax.scatter(
+                subset["PC1"],
+                subset["PC2"],
+                c=subset_cluster_labels,
+                cmap="tab10",
+                vmin=cluster_labels.min(),
+                vmax=cluster_labels.max(),
+                s=50,
+                marker=marker,
+            )
+
+        legend_handles = [
+            Line2D(
+                [],
+                [],
+                marker=marker,
+                linestyle="None",
+                markerfacecolor="black",
+                markeredgecolor="black",
+                markersize=8,
+                label=str(value),
+            )
+            for value, marker in var_markers.items()
+        ]
+
+        ax.legend(handles=legend_handles, title=name_var)
+        ax.set_title(f"PCA clusters by {name_var}")
+        ax.set_xlabel("PC1")
+        ax.set_ylabel("PC2")
+        fig.colorbar(scatter, ax=ax, label="Cluster")
+        fig.tight_layout()
+        fig.savefig(
+            output_plot_dir / f"clusters_by_{name_var}_shape_colored.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.show() 
+    return 1
+
+
+n_components = 5
+n_clusters = 7
+output_plot_dir = Path(f"../output/clustering_plots_{n_components}pcs_{top_n}genes_{n_clusters}clusters")
+output_plot_dir.mkdir(parents=True, exist_ok=True)
+
+
+pca_fit, pca = perform_pca(vst_top_genes, output_plot_dir)
+pca_df, merged_df = df_from_pca_components(n_components, pca_fit, vst_top_genes, df_metadata)
+linkage_matrix = draw_dendogram(pca_df, "ward", output_plot_dir)
+cluster_labels = perform_hierachichal_clustering(n_clusters, linkage_matrix, "maxclust", output_plot_dir)
+
+
 variables_to_plot = [
     "phenotype",
     "sex",
@@ -229,66 +316,8 @@ variables_to_plot = [
     "gh_bin",
     "project",
 ]
-
-marker_symbols = ["o", "s", "^", "D", "P", "X", "v", "<", ">", "*"]
-cluster_by_sample = pd.Series(cluster_labels, index=pca_df.index)
-
-for name_var in variables_to_plot:
-    values = merged_df[name_var].dropna().unique()
-
-    if len(values) == 0:
-        raise ValueError(f"No non-missing values found for {name_var}.")
-    if len(values) > len(marker_symbols):
-        raise ValueError(
-            f"{name_var} has {len(values)} categories, "
-            f"but only {len(marker_symbols)} marker shapes are defined."
-        )
-
-    var_markers = dict(zip(values, marker_symbols))
-
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    for value, marker in var_markers.items():
-        subset = merged_df.loc[merged_df[name_var] == value]
-        subset_cluster_labels = cluster_by_sample.loc[subset.index]
-
-        scatter = ax.scatter(
-            subset["PC1"],
-            subset["PC2"],
-            c=subset_cluster_labels,
-            cmap="tab10",
-            vmin=cluster_labels.min(),
-            vmax=cluster_labels.max(),
-            s=50,
-            marker=marker,
-        )
-
-    legend_handles = [
-        Line2D(
-            [],
-            [],
-            marker=marker,
-            linestyle="None",
-            markerfacecolor="black",
-            markeredgecolor="black",
-            markersize=8,
-            label=str(value),
-        )
-        for value, marker in var_markers.items()
-    ]
-
-    ax.legend(handles=legend_handles, title=name_var)
-    ax.set_title(f"PCA clusters by {name_var}")
-    ax.set_xlabel("PC1")
-    ax.set_ylabel("PC2")
-    fig.colorbar(scatter, ax=ax, label="Cluster")
-    fig.tight_layout()
-    fig.savefig(
-        output_plot_dir / f"clusters_by_{name_var}_shape_colored.png",
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.show() 
+scatter_plot_clusters_as_color_metadata_as_shape(merged_df, variables_to_plot, cluster_labels, pca_df, output_plot_dir)
+scatter_plot_clusters_as_color_metadata_as_shape(merged_df, variables_to_plot, cluster_labels, pca_df, output_plot_dir)
 
 
 """ Findings: 
@@ -312,6 +341,7 @@ Ithaca has also high PC2 values
 
 
 #TODO:
+# double check if plots are the same as before with functions now
 # 1. Cluster analysis: cases only, clustered on ~200 DE genes (VST, centered), then compare with clinical variables like mecfs_duration, mecfs_sudden_gradual, SF-36 scores, and bas_score.
 # 2. Cluster analysis: cases only, on top variable genes (not DE but based on vst), to compare with step 1. Check if both analyses find similar patient groups.
 # 3. Test cluster–variable associations. For categorical variables, use contingency-table tests; for continuous variables, compare distributions across clusters. 
