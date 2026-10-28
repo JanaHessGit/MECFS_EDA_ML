@@ -63,11 +63,9 @@ df_metadata, filtered_results, ds, vst, pc_model, pca = run_deseq2_de_analysis(
     geo_id=geo_id,
 )
 
-# TODO Rerun clustering with 1000, 2000 and 5000 to see if choice does not influence too much
-# TODO remove sex genes
 
 # filter top_n variable genes in vst data
-top_n = 1000
+top_n = 2000
 gene_var = vst.var(axis=0)
 top_genes = gene_var.sort_values(ascending=False).index[:top_n]
 vst_top_genes = vst[top_genes]
@@ -117,9 +115,8 @@ plt.title("Dendrogram")
 plt.xlabel("Samples")
 plt.ylabel("Euclidean Distance")
 plt.show()
-# -> look at 4 clusters
 
-n_clusters = 6
+n_clusters = 5
 cluster_labels = fcluster(linkage_matrix, t=n_clusters, criterion="maxclust")
 
 plt.figure(figsize=(8, 6))
@@ -131,12 +128,11 @@ plt.colorbar(label="Cluster")
 plt.show()
 
 
-# TODO other clustering method?
 
 # Scatter plot showing clusters as color and other metadata as shapes
 # version 1: variables as shapes
 
-output_plot_dir = Path(f"../output/clustering_plots_{n_components}pcs_{top_n}genes")
+output_plot_dir = Path(f"../output/clustering_plots_{n_components}pcs_{top_n}genes_{n_clusters}clusters")
 output_plot_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -295,11 +291,30 @@ for name_var in variables_to_plot:
     plt.show() 
 
 
+""" Findings: 
+1000 genes, 6 clusters:
+project: all patients with high PC2 values are project 1,
+but project 1 also has low/mid PC1 values, project 1 also 
+has tendency for lower PC1 values
+
+test_site: also test_site seems not to be evenly distributed, 
+no high PC2 values are Ithaca but Ithaca seems to be dense 
+in low PC1 values but also most patients came from Ithaca
+
+Project 5 is only Ithaca, but project 5 seems to be evenly distributed across PC1
+
+2000 genes, 7 clusters and 5000 genes, 7 clusters:
+test_site: also here test_site seems to be dense at low
+PC1 values and almost no other test sites here but here 
+Ithaca has also high PC2 values 
+
+"""
 
 
-#TODO: Mi: test other # variable genes in vst and other PC count
 #TODO:
-# 2. Secondary analysis: cases only, clustered on your ~200 DE genes (VST, centered), then compared with clinical variables like mecfs_duration, mecfs_sudden_gradual, SF-36 scores, and bas_score.
-# 3. Optional: cases only, on top variable genes, to compare with step 2. If both find similar patient groups, that's a stronger result.
-#Test cluster–variable associations. For categorical variables, use contingency-table tests; for continuous variables, compare distributions across clusters. With a small cohort, prefer exact or permutation-based tests where appropriate. Report effect sizes and adjust for multiple comparisons, for example with Benjamini–Hochberg correction.
-#Run a separate case-only analysis if your goal is to explore patient subgroups. You can compare clustering from genes that vary among cases with an exploratory DEG-signature analysis, but treat the latter as hypothesis-generating and seek validation in independent data.
+# 1. Cluster analysis: cases only, clustered on ~200 DE genes (VST, centered), then compare with clinical variables like mecfs_duration, mecfs_sudden_gradual, SF-36 scores, and bas_score.
+# 2. Cluster analysis: cases only, on top variable genes (not DE but based on vst), to compare with step 1. Check if both analyses find similar patient groups.
+# 3. Test cluster–variable associations. For categorical variables, use contingency-table tests; for continuous variables, compare distributions across clusters. 
+#    With a small cohort, prefer exact or permutation-based tests where appropriate. Report effect sizes and adjust for multiple comparisons, for example with Benjamini–Hochberg correction.
+# 4. Run a separate case-only analysis if your goal is to explore patient subgroups. You can compare clustering from genes that vary among cases with an exploratory DEG-signature analysis, but treat the latter as hypothesis-generating and seek validation in independent data.
+# 5. Try other clustering method?
