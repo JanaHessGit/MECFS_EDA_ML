@@ -1,3 +1,4 @@
+only for me/
 .venv/
 data/raw/*
 !data/raw/.gitkeep
