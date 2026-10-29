@@ -8,6 +8,9 @@ import scipy.cluster.hierarchy as sch
 from sklearn.cluster import AgglomerativeClustering
 from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
 from matplotlib.lines import Line2D
+from scipy.stats import chi2_contingency
+from statsmodels.stats.multitest import multipletests
+
 
 # Clustering
 # Before training the classifier, lets check if data builds any clusters that are not 
@@ -58,7 +61,7 @@ df_metadata, filtered_results_deseq2, ds, vst, pc_model, pca = run_deseq2_de_ana
 
 ####### Cluster Analysis ######
 
-def perform_pca(selected_data, output_dir):
+def perform_pca(selected_data, output_dir, save_b):
     X = np.asarray(selected_data)
     pca = PCA(n_components=50, random_state=0)
     pca_fit = pca.fit_transform(X)
@@ -69,12 +72,13 @@ def perform_pca(selected_data, output_dir):
     plt.xlabel("Principal Component")
     plt.ylabel("Explained Variance (%)")
     plt.xticks(range(1, len(ev) + 1))
-    plt.grid()
-    fig.savefig(
-        output_dir / f"pca_screeplot.png",
-        dpi=300,
-        bbox_inches="tight",
-    )
+    plt.grid()        
+    if save_b:
+        fig.savefig(
+            output_dir / f"pca_screeplot.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
     plt.show()
 
     return pca_fit, pca
@@ -92,42 +96,43 @@ def df_from_pca_components(n_components, vst_dt, pca_fit, df_metadata):
     return pca_df, merged_df
 
 
-def draw_dendogram(pca_df, method, output_dir):
+def draw_dendogram(pca_df, method, output_dir, save_b):
     fig = plt.figure(figsize=(8, 5))
     linkage_matrix = linkage(pca_df, method = method)
     dendrogram(linkage_matrix)
     plt.title("Dendrogram")
     plt.xlabel("Samples")
-    fig.savefig(
-        output_dir / f"dendogram_hierarcical_clustering_method_{method}.png",
-        dpi=300,
-        bbox_inches="tight",
-    )
+    if save_b:
+        fig.savefig(
+            output_dir / f"dendogram_hierarcical_clustering_method_{method}.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
     plt.show()
     return linkage_matrix
 
 
-def perform_hierachichal_clustering(pca_df, n_clusters, linkage_matrix, criterion_clust, output_dir):
-
+def perform_hierachichal_clustering(pca_df, n_clusters, linkage_matrix, criterion_clust, output_dir, save_b):
     cluster_labels = fcluster(linkage_matrix, t=n_clusters, criterion=criterion_clust)
-    fig =plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6))
     plt.scatter(pca_df["PC1"], pca_df["PC2"], c=cluster_labels, cmap="tab10", s=50)
     plt.title("Hierarchical Clustering Scatter Plot (fcluster)")
     plt.xlabel("PC1")
     plt.ylabel("PC2")
     plt.colorbar(label="Cluster")
-    fig.savefig(
-        output_dir / f"PC1_PC2_hierarcical_clustering_method_{criterion_clust}.png",
-        dpi=300,
-        bbox_inches="tight",
-    )    
+    if save_b:
+        fig.savefig(
+            output_dir / f"PC1_PC2_hierarcical_clustering_method_{criterion_clust}.png",
+            dpi=300,
+            bbox_inches="tight",
+        )    
     plt.show()
     return cluster_labels
 
 
 
 # Scatter plot showing clusters as number and other metadata as color
-def scatter_plot_clusters_as_number_metadata_as_color(df, vars_to_plot, cluster_labels, pca_df, output_dir):
+def scatter_plot_clusters_as_number_metadata_as_color(df, vars_to_plot, cluster_labels, pca_df, output_dir, save_b):
     cluster_by_sample = pd.Series(cluster_labels, index=pca_df.index)
 
     for name_var in vars_to_plot:
@@ -190,18 +195,19 @@ def scatter_plot_clusters_as_number_metadata_as_color(df, vars_to_plot, cluster_
         )
         ax.legend(title=name_var, bbox_to_anchor=(1.02, 1), loc="upper left")
         fig.tight_layout()
-        fig.savefig(
-            output_dir / f"clusters_by_{name_var}_color_numbered.png",
-            dpi=300,
-            bbox_inches="tight",
-        )
+        if save_b:
+            fig.savefig(
+                output_dir / f"clusters_by_{name_var}_color_numbered.png",
+                dpi=300,
+                bbox_inches="tight",
+            )
         plt.show()
     return 1
 
 
 
 # Scatter plot showing clusters as color and other metadata as shape
-def scatter_plot_clusters_as_color_metadata_as_shape(df, vars_to_plot, cluster_labels, pca_df, output_dir):
+def scatter_plot_clusters_as_color_metadata_as_shape(df, vars_to_plot, cluster_labels, pca_df, output_dir, save_b):
     marker_symbols = ["o", "s", "^", "D", "P", "X", "v", "<", ">", "*"]
     cluster_by_sample = pd.Series(cluster_labels, index=pca_df.index)
 
@@ -255,14 +261,68 @@ def scatter_plot_clusters_as_color_metadata_as_shape(df, vars_to_plot, cluster_l
         ax.set_ylabel("PC2")
         fig.colorbar(scatter, ax=ax, label="Cluster")
         fig.tight_layout()
-        fig.savefig(
-            output_dir / f"clusters_by_{name_var}_shape_colored.png",
-            dpi=300,
-            bbox_inches="tight",
-        )
+        if save_b:
+            fig.savefig(
+                output_dir / f"clusters_by_{name_var}_shape_colored.png",
+                dpi=300,
+                bbox_inches="tight",
+            )
         plt.show() 
     return 1
 
+
+
+# Test if the clusters have the same distribution/frequency of a categorical variable?
+# Check whether the cluster association frequency differs in different metadata groups e.g. age, sex, etc. 
+def calculate_chi2_cluster_associations(merged_df, cluster_labels, pca_df, variables, out_dir, save_b):
+
+    association_df = merged_df.copy()
+    association_df["cluster"] = pd.Series(
+        cluster_labels,
+        index=pca_df.index,
+    )
+
+
+    results = []
+
+    for variable in variables:
+        data = association_df[["cluster", variable]].dropna()
+        table = pd.crosstab(data["cluster"], data[variable])
+
+        # A test needs at least two clusters and two variable categories.
+        if table.shape[0] < 2 or table.shape[1] < 2:
+            continue
+
+        chi2, p_value, dof, expected = chi2_contingency(table)
+        n = table.to_numpy().sum()
+        cramers_v = np.sqrt(
+            chi2 / (n * min(table.shape[0] - 1, table.shape[1] - 1))
+        )
+
+        results.append({
+            "variable": variable,
+            "p_value": p_value,
+            "cramers_v": cramers_v,
+            "min_expected_count": expected.min(),
+            "table": table,
+        })
+
+    results_df = pd.DataFrame(results)
+
+    if not results_df.empty:
+        results_df["p_adjusted"] = multipletests(
+            results_df["p_value"],
+            method="fdr_bh",
+        )[1]
+
+        print(results_df[["variable", "p_value", "p_adjusted",
+                        "cramers_v", "min_expected_count"]])
+        for result in results:
+            print(f"\n{result['variable']}")
+            print(result["table"])
+    if save_b:
+        results_df.to_csv(out_dir / "chisquare_cluster_association_results.csv", index=False)
+    return results_df
 
 #### Run clustering analysis
 
@@ -286,18 +346,25 @@ plt.legend()
 plt.show()
 # -> genes across all means were selected
 
-
+index_to_match = vst_top_genes.index
 
 n_components = 10
 n_clusters = 6
+save = False
 output_plot_dir = Path(f"../output/top_n_variable_vst_genes_all_patients/clustering_plots_{n_components}pcs_{top_n}genes_{n_clusters}clusters")
 output_plot_dir.mkdir(parents=True, exist_ok=True)
 
 
-pca_fit1, pca1 = perform_pca(vst_top_genes, output_plot_dir)
+pca_fit1, pca1 = perform_pca(vst_top_genes, output_plot_dir, save)
 pca_df1, merged_df1 = df_from_pca_components(n_components, vst_top_genes, pca_fit1, df_metadata)
-linkage_matrix1 = draw_dendogram(pca_df1, "ward", output_plot_dir)
-cluster_labels1 = perform_hierachichal_clustering(pca_df1, n_clusters, linkage_matrix1, "maxclust", output_plot_dir)
+if not merged_df1.index.equals(index_to_match):
+    raise ValueError("Mismatch in indexes")
+
+if not pca_df1.index.equals(index_to_match):
+    raise ValueError("Mismatch in indexes")
+
+linkage_matrix1 = draw_dendogram(pca_df1, "ward", output_plot_dir, save)
+cluster_labels1 = perform_hierachichal_clustering(pca_df1, n_clusters, linkage_matrix1, "maxclust", output_plot_dir, save)
 
 
 variables_to_plot = [
@@ -311,8 +378,23 @@ variables_to_plot = [
     "project",
 ]
 
-scatter_plot_clusters_as_number_metadata_as_color(merged_df1, variables_to_plot, cluster_labels1, pca_df1, output_plot_dir)
-scatter_plot_clusters_as_color_metadata_as_shape(merged_df1, variables_to_plot, cluster_labels1, pca_df1, output_plot_dir)
+scatter_plot_clusters_as_number_metadata_as_color(merged_df1, variables_to_plot, cluster_labels1, pca_df1, output_plot_dir, save)
+scatter_plot_clusters_as_color_metadata_as_shape(merged_df1, variables_to_plot, cluster_labels1, pca_df1, output_plot_dir, save)
+
+
+
+
+variables_for_cluster_association = [
+    "sex",
+    "test_site",
+    "age_bin",
+    "bmi_bin",
+    "vo2_peak_bin",
+    "gh_bin",
+    "project",
+]
+res_cluster_associations = calculate_chi2_cluster_associations(merged_df1, cluster_labels1, pca_df1, variables_for_cluster_association, output_plot_dir, True)
+
 """
 
 """ Findings: 
@@ -341,7 +423,7 @@ Ithaca has also high PC2 values
 # then compare with clinical variables like mecfs_duration, mecfs_sudden_gradual, mfi20 scores.
 
 #Filter cases and top n DE genes
-n_top_de_genes = 200
+n_top_de_genes = 100
 case_ids = df_metadata.loc[df_metadata["phenotype"] == "case"].index.tolist()
 ds_top_de_genes = filtered_results_deseq2.sort_values(
                 by="log2FoldChange",
@@ -352,19 +434,27 @@ ds_top_de_genes = filtered_results_deseq2.sort_values(
 vst_top_de_genes = vst[ds_top_de_genes]
 vst_top_de_genes_cases = vst_top_de_genes.loc[case_ids]
 
+index_to_check = vst_top_de_genes_cases.index
 
-
-# Clstering on cases and n_top_de_genes DE genes in vst data independent (based on DESEQ2)
+# Clustering on cases and n_top_de_genes DE genes in vst data independent (based on DESEQ2)
 n_components = 10
 n_clusters = 7
+save = False
+
 out_dir = Path(f"../output/top_de_genes_cases/clustering_plots_{n_components}pcs_{n_top_de_genes}genes_{n_clusters}clusters")
 out_dir.mkdir(parents=True, exist_ok=True)
 
 
-pca_fit_cases_topDE, pca_cases_topDE = perform_pca(vst_top_de_genes_cases, out_dir)
+pca_fit_cases_topDE, pca_cases_topDE = perform_pca(vst_top_de_genes_cases, out_dir, save)
 pca_df_cases_topDE, merged_df_cases_topDE = df_from_pca_components(n_components, vst_top_de_genes_cases, pca_fit_cases_topDE, df_metadata)
-linkage_matrix_cases_topDE = draw_dendogram(pca_df_cases_topDE, "ward", out_dir)
-cluster_labels = perform_hierachichal_clustering(pca_df_cases_topDE, n_clusters, linkage_matrix_cases_topDE, "maxclust", out_dir)
+if not merged_df_cases_topDE.index.equals(index_to_check):
+    raise ValueError("Mismatch in indexes")
+
+if not pca_df_cases_topDE.index.equals(index_to_check):
+    raise ValueError("Mismatch in indexes")
+
+linkage_matrix_cases_topDE = draw_dendogram(pca_df_cases_topDE, "ward", out_dir, save)
+cluster_labels = perform_hierachichal_clustering(pca_df_cases_topDE, n_clusters, linkage_matrix_cases_topDE, "maxclust", out_dir, save)
 
 variables_to_plot = [
     "phenotype",
@@ -380,18 +470,34 @@ variables_to_plot = [
     "mecfs_sudden_gradual"
 ]
 
-scatter_plot_clusters_as_number_metadata_as_color(merged_df_cases_topDE, variables_to_plot, cluster_labels, pca_df_cases_topDE, out_dir)
-scatter_plot_clusters_as_color_metadata_as_shape(merged_df_cases_topDE, variables_to_plot, cluster_labels, pca_df_cases_topDE, out_dir)
+scatter_plot_clusters_as_number_metadata_as_color(merged_df_cases_topDE, variables_to_plot, cluster_labels, pca_df_cases_topDE, out_dir, save)
+scatter_plot_clusters_as_color_metadata_as_shape(merged_df_cases_topDE, variables_to_plot, cluster_labels, pca_df_cases_topDE, out_dir, save)
+
+
+variables_for_cluster_association = [
+    "sex",
+    "test_site",
+    "age_bin",
+    "bmi_bin",
+    "vo2_peak_bin",
+    "gh_bin",
+    "project",
+]
+
+
+res_cluster_associations = calculate_chi2_cluster_associations(merged_df_cases_topDE, cluster_labels, pca_df_cases_topDE, variables_for_cluster_association, out_dir, True)
+
 
 
 """ Findings: 
-test_site clustering not visible here
-no clusters can be clearly mapped to any metadata 
-no clear clusters in general, except maybe the two patients with high PC2 values
+- test_site clustering not visible here, which makes sense because it is in design of DESEq2
+- no clusters can be clearly mapped to any metadata 
+- no clear clusters in general, except maybe the two patients with high PC2 values
 """
 
 
 #TODO:
+# Check code for chi2 and run it for missing experiments
 # 1. Cluster analysis: cases only, on top variable genes (not DE but based on vst), to compare with step 1. Check if both analyses find similar patient groups.
 # 2. Test cluster–variable associations. For categorical variables, use contingency-table tests; for continuous variables, compare distributions across clusters. 
 #    With a small cohort, prefer exact or permutation-based tests where appropriate. Report effect sizes and adjust for multiple comparisons, for example with Benjamini–Hochberg correction.
