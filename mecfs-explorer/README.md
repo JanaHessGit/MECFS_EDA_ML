@@ -57,13 +57,22 @@ from the `code/` directory:
    stabilizing transformation, and runs PyDESeq2. The default design is
    `~sex+test_site+phenotype`, comparing cases with controls. The analysis also
    creates PCA, volcano, MA, and heatmap visualizations.
-4. **Explore sample clusters** — `code/clustering.py` uses the n most
-   variable transformed genes, PCA, and hierarchical clustering to explore
-   sample groupings. The number of genes, components, and clusters are
-   exploratory choices in the script and should be assessed for sensitivity.
+4. **Explore sample clusters** — `code/clustering.py` contains an exploratory
+   workflow that selects highly variable VST-transformed genes, runs PCA, and
+   applies Ward hierarchical clustering to the first n PCs. Plots show samples 
+   on PC1 and PC2 with cluster labels and optional metadata overlays. Metadata 
+   overlays describe the plotted samples; they do not determine the
+   clusters. Assess sensitivity to the gene, PC, and cluster counts, and treat
+   any apparent groups as exploratory rather than validated subtypes.
 5. **Compare data and results** — `code/compare_data.py` contains checks for
    differences between GEO and study-repository metadata and between analysis
    outputs. Some comparisons expect existing processed results.
+6. **Compare clustering plots** — `code/compare_pictures.py` compares PNG
+   files with matching names in two folders. It reports whether each pair is
+   byte-for-byte identical and whether the decoded RGBA pixels match, and
+   identifies files present in only one folder. Update the folder paths in
+   the script before running it; it compares only files directly inside those
+   folders, not subfolders.
 
 `code/differential_abundance_analysis.py` is an older exploratory analysis.
 
@@ -119,6 +128,7 @@ mecfs-explorer/
 │   ├── run_deseq2_de_analysis.py
 │   ├── clustering.py
 │   ├── compare_data.py
+│   ├── compare_pictures.py
 │   └── differential_abundance_analysis.py
 ├── data/
 │   ├── raw/       # GEO counts, metadata, and study supplements
