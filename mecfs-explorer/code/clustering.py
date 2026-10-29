@@ -266,7 +266,7 @@ def scatter_plot_clusters_as_color_metadata_as_shape(df, vars_to_plot, cluster_l
 
 #### Run clustering analysis
 
-
+"""
 # Version 1: Use all patients (case & control), top_n variable genes in vst data, 
 # independent from DE analysis because they would already incorporate the case/control info
 
@@ -313,10 +313,10 @@ variables_to_plot = [
 
 scatter_plot_clusters_as_number_metadata_as_color(merged_df1, variables_to_plot, cluster_labels1, pca_df1, output_plot_dir)
 scatter_plot_clusters_as_color_metadata_as_shape(merged_df1, variables_to_plot, cluster_labels1, pca_df1, output_plot_dir)
-
+"""
 
 """ Findings: 
-5 components:
+5,10 components similar findings:
 1000 genes, 6 clusters:
 project: all patients with high PC2 values are project 1,
 but project 1 also has low/mid PC1 values, project 1 also 
@@ -336,7 +336,7 @@ Ithaca has also high PC2 values
 """
 
 
-"""
+
 # Version 2: Cases only, n most DE genes from DESEQ2 analysis using vst data for clustering
 # then compare with clinical variables like mecfs_duration, mecfs_sudden_gradual, mfi20 scores.
 
@@ -366,7 +366,6 @@ pca_df_cases_topDE, merged_df_cases_topDE = df_from_pca_components(n_components,
 linkage_matrix_cases_topDE = draw_dendogram(pca_df_cases_topDE, "ward", out_dir)
 cluster_labels = perform_hierachichal_clustering(pca_df_cases_topDE, n_clusters, linkage_matrix_cases_topDE, "maxclust", out_dir)
 
-
 variables_to_plot = [
     "phenotype",
     "sex",
@@ -383,11 +382,18 @@ variables_to_plot = [
 
 scatter_plot_clusters_as_number_metadata_as_color(merged_df_cases_topDE, variables_to_plot, cluster_labels, pca_df_cases_topDE, out_dir)
 scatter_plot_clusters_as_color_metadata_as_shape(merged_df_cases_topDE, variables_to_plot, cluster_labels, pca_df_cases_topDE, out_dir)
+
+
+""" Findings: 
+test_site clustering not visible here
+no clusters can be clearly mapped to any metadata 
+no clear clusters in general, except maybe the two patients with high PC2 values
 """
 
+
 #TODO:
-# 2. Cluster analysis: cases only, on top variable genes (not DE but based on vst), to compare with step 1. Check if both analyses find similar patient groups.
-# 3. Test cluster–variable associations. For categorical variables, use contingency-table tests; for continuous variables, compare distributions across clusters. 
+# 1. Cluster analysis: cases only, on top variable genes (not DE but based on vst), to compare with step 1. Check if both analyses find similar patient groups.
+# 2. Test cluster–variable associations. For categorical variables, use contingency-table tests; for continuous variables, compare distributions across clusters. 
 #    With a small cohort, prefer exact or permutation-based tests where appropriate. Report effect sizes and adjust for multiple comparisons, for example with Benjamini–Hochberg correction.
-# 4. Run a separate case-only analysis if your goal is to explore patient subgroups. You can compare clustering from genes that vary among cases with an exploratory DEG-signature analysis, but treat the latter as hypothesis-generating and seek validation in independent data.
-# 5. Try other clustering method?
+# 3. Case-only subgroup analysis to e.g. explore patient subgroups. Would have to use genes that vary among cases (new analysis).
+# 4. Try other clustering method?
