@@ -109,9 +109,8 @@ python run_deseq2_de_analysis.py
 ```
 
 The differential-expression script sets `save_data = False` by default.
-Change it to `True` in `run_deseq2_de_analysis.py` to save tables and plots
-under `data/processed/GSE293840/phenotype_sex_and_testsite/`. The script
-displays plots interactively; use a graphical session or configure a
+Change it to `True` in `run_deseq2_de_analysis.py` to save tables and plots.
+The script displays plots interactively; use a graphical session or configure a
 non-interactive Matplotlib backend when running headlessly.
 
 The clustering script also runs the differential-expression workflow with
